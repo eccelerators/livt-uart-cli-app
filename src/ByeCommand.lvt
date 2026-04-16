@@ -1,0 +1,19 @@
+namespace Livt.App
+
+using Livt.IO
+
+component ByeCommand: CommandInterface
+{
+	uart: Uart
+
+	new(uart: Uart)
+	{
+		this.uart = uart
+	}
+
+	override fn Execute()
+	{
+		var message = "Bye".Encode()
+		this.uart.Send(message)
+	}
+}

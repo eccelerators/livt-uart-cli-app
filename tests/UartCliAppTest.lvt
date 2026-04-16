@@ -1,0 +1,130 @@
+namespace Livt.App.Tests
+
+using Livt.IO
+using Livt.App
+
+@Test
+component UartCliAppTest
+{
+	uart : UartCliApp
+
+	rx: logic
+
+	tx: logic
+
+	tx_dv: logic
+
+	tx_byte: logic[8]
+
+	tx_active: logic
+
+	tx_done: logic
+
+	transmitter: UartTransmitter
+
+	uart_tester: BufferedUart
+
+	new()
+	{
+		this.uart = new UartCliApp(this.rx, this.tx)
+
+		this.uart_tester = new BufferedUart(this.tx, this.rx)
+	}
+
+	@Test
+	fn TestHelloCommand()
+	{
+		uart_tester.Transmit(0x68)
+		uart_tester.Transmit(0x65)
+		uart_tester.Transmit(0x6C)
+		uart_tester.Transmit(0x6C)
+		uart_tester.Transmit(0x6F)
+		uart_tester.Transmit(0x0A)
+
+		Simulation.Wait(UartTransmitter.TICKS_PER_BIT * 12 * 10)
+
+		assert uart_tester.Receive() == 0x68
+		assert uart_tester.Receive() == 0x65
+		assert uart_tester.Receive() == 0x6C
+		assert uart_tester.Receive() == 0x6C
+		assert uart_tester.Receive() == 0x6F
+
+		assert uart_tester.Receive() == 0x48
+		assert uart_tester.Receive() == 0x65
+		assert uart_tester.Receive() == 0x6C
+		assert uart_tester.Receive() == 0x6C
+		assert uart_tester.Receive() == 0x6F
+	}
+
+	@Test
+	fn TestByeCommand()
+	{
+		uart_tester.Transmit(0x62)
+		uart_tester.Transmit(0x79)
+		uart_tester.Transmit(0x65)
+		uart_tester.Transmit(0x0A)
+
+		Simulation.Wait(UartTransmitter.TICKS_PER_BIT * 12 * 10)
+
+		assert uart_tester.Receive() == 0x62
+		assert uart_tester.Receive() == 0x79
+		assert uart_tester.Receive() == 0x65
+
+		assert uart_tester.Receive() == 0x42
+		assert uart_tester.Receive() == 0x79
+		assert uart_tester.Receive() == 0x65
+	}
+
+	@Test
+	fn TestHelpCommand()
+	{
+		uart_tester.Transmit(0x68)
+		uart_tester.Transmit(0x65)
+		uart_tester.Transmit(0x6C)
+		uart_tester.Transmit(0x70)
+		uart_tester.Transmit(0x0A)
+
+		Simulation.Wait(UartTransmitter.TICKS_PER_BIT * 12 * 25)
+
+		assert uart_tester.Receive() == 0x68
+		assert uart_tester.Receive() == 0x65
+		assert uart_tester.Receive() == 0x6C
+		assert uart_tester.Receive() == 0x70
+
+		assert uart_tester.Receive() == 0x68
+		assert uart_tester.Receive() == 0x65
+		assert uart_tester.Receive() == 0x6C
+		assert uart_tester.Receive() == 0x6C
+		assert uart_tester.Receive() == 0x6F
+		assert uart_tester.Receive() == 0x20
+		assert uart_tester.Receive() == 0x62
+		assert uart_tester.Receive() == 0x79
+		assert uart_tester.Receive() == 0x65
+	}
+
+	@Test
+	fn TestUnknownCommandWithCrLf()
+	{
+		uart_tester.Transmit(0x6E)
+		uart_tester.Transmit(0x6F)
+		uart_tester.Transmit(0x70)
+		uart_tester.Transmit(0x65)
+		uart_tester.Transmit(0x0D)
+		uart_tester.Transmit(0x0A)
+
+		Simulation.Wait(UartTransmitter.TICKS_PER_BIT * 12 * 30)
+
+		assert uart_tester.Receive() == 0x6E
+		assert uart_tester.Receive() == 0x6F
+		assert uart_tester.Receive() == 0x70
+		assert uart_tester.Receive() == 0x65
+
+		assert uart_tester.Receive() == 0x55
+		assert uart_tester.Receive() == 0x6E
+		assert uart_tester.Receive() == 0x6B
+		assert uart_tester.Receive() == 0x6E
+		assert uart_tester.Receive() == 0x6F
+		assert uart_tester.Receive() == 0x77
+		assert uart_tester.Receive() == 0x6E
+	}
+}

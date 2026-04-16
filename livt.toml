@@ -1,0 +1,13 @@
+[project]
+name = "UartCliApp"
+version = "1.0.0"
+path = "src"
+outdir = "out"
+
+[tests]
+path = "tests"
+components = ["UartCliAppTest"]
+
+[dependencies]
+Uart = "1.0.0"
+Queue = "1.0.0"

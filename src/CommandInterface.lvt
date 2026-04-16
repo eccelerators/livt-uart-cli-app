@@ -1,0 +1,6 @@
+namespace Livt.App
+
+interface CommandInterface
+{
+	fn Execute()
+}

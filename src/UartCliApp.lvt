@@ -1,0 +1,53 @@
+namespace Livt.App
+
+using Livt.Collections
+using Livt.IO
+
+component UartCliApp
+{
+	const NEW_LINE: byte = 0x0A
+    
+	const CARRIAGE_RETURN: byte = 0x0D
+
+	uart: Uart
+
+	queue: Queue
+
+	parser: CommandParser
+
+	new (rx: in logic, tx: out logic)
+	{
+		uart = new Uart(rx, tx)
+		queue = new Queue()
+		parser = new CommandParser(uart)
+	}
+
+	process Main()
+	{
+		if (!uart.IsDataAvailable())
+		{
+			continue
+		}
+
+		var data = uart.Receive()
+
+		if (data == NEW_LINE)
+		{
+			var command = parser.Parse(queue)
+
+			command.Execute()
+		}
+		else
+		{
+			if (data == CARRIAGE_RETURN)
+			{
+				continue
+			}
+			else
+			{
+				queue.Enqueue(data)
+				uart.Transmit(data)
+			}
+		}
+	}
+}
