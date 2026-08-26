@@ -1,53 +1,96 @@
 namespace Livt.App
 
-using Livt.Collections
+using Eccelerators.Cli
 using Livt.IO
 
+/**
+ * UART transport adapter and example application for Eccelerators.Cli.
+ */
 component UartCliApp
 {
-	const NEW_LINE: byte = 0x0A
-    
-	const CARRIAGE_RETURN: byte = 0x0D
-
 	uart: Uart
 
-	queue: Queue
+	cli: Cli
 
-	parser: CommandParser
-
-	new (rx: in logic, tx: out logic)
+	/**
+	 * Creates the UART, reusable CLI core, and application command dispatcher.
+	 */
+	new(rx: in logic, tx: out logic)
 	{
-		uart = new Uart(rx, tx)
-		queue = new Queue()
-		parser = new CommandParser(uart)
+		this.uart = new Uart(rx, tx)
+		this.cli = new Cli(true)
 	}
 
+	/**
+	 * Services prompts, commands, UART output, and UART input with backpressure.
+	 */
 	process Main()
 	{
-		if (!uart.IsDataAvailable())
-		{
-			continue
-		}
+		this.cli.Service()
 
-		var data = uart.Receive()
+		if (this.cli.HasCommand() == true) {
+			var dispatched: bool = this.DispatchCommand()
 
-		if (data == NEW_LINE)
-		{
-			var command = parser.Parse(queue)
-
-			command.Execute()
-		}
-		else
-		{
-			if (data == CARRIAGE_RETURN)
-			{
-				continue
-			}
-			else
-			{
-				queue.Enqueue(data)
-				uart.Transmit(data)
+			if (dispatched == true) {
+				this.cli.CompleteCommand()
 			}
 		}
+
+		if (this.cli.HasOutput() == true && this.uart.GetTransmitSpace() > 0) {
+			var outputByte: byte = this.cli.PeekOutput()
+
+			if (this.uart.Transmit(outputByte) == true) {
+				this.cli.ConsumeOutput()
+			}
+		}
+
+		if (this.uart.IsDataAvailable() == true && this.cli.CanAcceptByte() == true) {
+			var inputByte: byte = this.uart.Receive()
+			this.cli.AcceptByte(inputByte)
+		}
+	}
+
+	/**
+	 * Matches and executes one statically synthesized application command.
+	 */
+	fn DispatchCommand() bool
+	{
+		var help = "help".Encode()
+		var isHelp: bool = this.cli.CommandEquals(help)
+
+		if (isHelp == true) {
+			var helpMessage = "help hello bye echo".Encode()
+			var helpWritten: bool = this.cli.TryWriteLine(helpMessage)
+			return helpWritten
+		}
+
+		var hello = "hello".Encode()
+		var isHello: bool = this.cli.CommandEquals(hello)
+
+		if (isHello == true) {
+			var helloMessage = "Hello".Encode()
+			var helloWritten: bool = this.cli.TryWriteLine(helloMessage)
+			return helloWritten
+		}
+
+		var bye = "bye".Encode()
+		var isBye: bool = this.cli.CommandEquals(bye)
+
+		if (isBye == true) {
+			var byeMessage = "Bye".Encode()
+			var byeWritten: bool = this.cli.TryWriteLine(byeMessage)
+			return byeWritten
+		}
+
+		var echo = "echo".Encode()
+		var isEcho: bool = this.cli.CommandEquals(echo)
+
+		if (isEcho == true) {
+			return this.cli.TryWriteArgumentsLine()
+		}
+
+		var unknownMessage = "Unknown command".Encode()
+		var unknownWritten: bool = this.cli.TryWriteLine(unknownMessage)
+		return unknownWritten
 	}
 }

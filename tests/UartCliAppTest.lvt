@@ -1,130 +1,113 @@
 namespace Livt.App.Tests
 
-using Livt.IO
 using Livt.App
+using Livt.IO
 
 @Test
 component UartCliAppTest
 {
-	uart : UartCliApp
+	app: UartCliApp
+
+	uartTester: BufferedUart
 
 	rx: logic
 
 	tx: logic
 
-	tx_dv: logic
-
-	tx_byte: logic[8]
-
-	tx_active: logic
-
-	tx_done: logic
-
-	transmitter: UartTransmitter
-
-	uart_tester: BufferedUart
-
+	/**
+	 * Creates the application and a UART peer connected in a loop.
+	 */
 	new()
 	{
-		this.uart = new UartCliApp(this.rx, this.tx)
+		this.app = new UartCliApp(this.rx, this.tx)
+		this.uartTester = new BufferedUart(this.tx, this.rx)
+	}
 
-		this.uart_tester = new BufferedUart(this.tx, this.rx)
+	/**
+	 * Queues every byte in a test message for transmission to the application.
+	 */
+	fn Transmit(data: byte[])
+	{
+		for (var i = 0; i < data.Length(); i++) {
+			assert this.uartTester.Transmit(data[i]) == true
+		}
+	}
+
+	/**
+	 * Verifies and consumes every byte in an expected application message.
+	 */
+	fn Expect(data: byte[])
+	{
+		for (var i = 0; i < data.Length(); i++) {
+			assert this.uartTester.IsDataAvailable() == true
+			assert this.uartTester.Receive() == data[i]
+		}
+	}
+
+	/**
+	 * Verifies and consumes one expected application byte.
+	 */
+	fn ExpectByte(value: byte)
+	{
+		assert this.uartTester.IsDataAvailable() == true
+		assert this.uartTester.Receive() == value
+	}
+
+	/**
+	 * Waits long enough to transmit, execute, and receive a bounded CLI exchange.
+	 */
+	fn WaitForExchange(byteCount: int)
+	{
+		Simulation.Wait(UartTransmitter.TICKS_PER_BIT * 12 * byteCount)
 	}
 
 	@Test
-	fn TestHelloCommand()
+	fn RunsCompleteInteractiveSession()
 	{
-		uart_tester.Transmit(0x68)
-		uart_tester.Transmit(0x65)
-		uart_tester.Transmit(0x6C)
-		uart_tester.Transmit(0x6C)
-		uart_tester.Transmit(0x6F)
-		uart_tester.Transmit(0x0A)
-
-		Simulation.Wait(UartTransmitter.TICKS_PER_BIT * 12 * 10)
-
-		assert uart_tester.Receive() == 0x68
-		assert uart_tester.Receive() == 0x65
-		assert uart_tester.Receive() == 0x6C
-		assert uart_tester.Receive() == 0x6C
-		assert uart_tester.Receive() == 0x6F
-
-		assert uart_tester.Receive() == 0x48
-		assert uart_tester.Receive() == 0x65
-		assert uart_tester.Receive() == 0x6C
-		assert uart_tester.Receive() == 0x6C
-		assert uart_tester.Receive() == 0x6F
-	}
-
-	@Test
-	fn TestByeCommand()
-	{
-		uart_tester.Transmit(0x62)
-		uart_tester.Transmit(0x79)
-		uart_tester.Transmit(0x65)
-		uart_tester.Transmit(0x0A)
-
-		Simulation.Wait(UartTransmitter.TICKS_PER_BIT * 12 * 10)
-
-		assert uart_tester.Receive() == 0x62
-		assert uart_tester.Receive() == 0x79
-		assert uart_tester.Receive() == 0x65
-
-		assert uart_tester.Receive() == 0x42
-		assert uart_tester.Receive() == 0x79
-		assert uart_tester.Receive() == 0x65
-	}
-
-	@Test
-	fn TestHelpCommand()
-	{
-		uart_tester.Transmit(0x68)
-		uart_tester.Transmit(0x65)
-		uart_tester.Transmit(0x6C)
-		uart_tester.Transmit(0x70)
-		uart_tester.Transmit(0x0A)
-
-		Simulation.Wait(UartTransmitter.TICKS_PER_BIT * 12 * 25)
-
-		assert uart_tester.Receive() == 0x68
-		assert uart_tester.Receive() == 0x65
-		assert uart_tester.Receive() == 0x6C
-		assert uart_tester.Receive() == 0x70
-
-		assert uart_tester.Receive() == 0x68
-		assert uart_tester.Receive() == 0x65
-		assert uart_tester.Receive() == 0x6C
-		assert uart_tester.Receive() == 0x6C
-		assert uart_tester.Receive() == 0x6F
-		assert uart_tester.Receive() == 0x20
-		assert uart_tester.Receive() == 0x62
-		assert uart_tester.Receive() == 0x79
-		assert uart_tester.Receive() == 0x65
-	}
-
-	@Test
-	fn TestUnknownCommandWithCrLf()
-	{
-		uart_tester.Transmit(0x6E)
-		uart_tester.Transmit(0x6F)
-		uart_tester.Transmit(0x70)
-		uart_tester.Transmit(0x65)
-		uart_tester.Transmit(0x0D)
-		uart_tester.Transmit(0x0A)
-
-		Simulation.Wait(UartTransmitter.TICKS_PER_BIT * 12 * 30)
-
-		assert uart_tester.Receive() == 0x6E
-		assert uart_tester.Receive() == 0x6F
-		assert uart_tester.Receive() == 0x70
-		assert uart_tester.Receive() == 0x65
-
-		assert uart_tester.Receive() == 0x55
-		assert uart_tester.Receive() == 0x6E
-		assert uart_tester.Receive() == 0x6B
-		assert uart_tester.Receive() == 0x6E
-		assert uart_tester.Receive() == 0x6F
-		assert uart_tester.Receive() == 0x77
-		assert uart_tester.Receive() == 0x6E
+		this.WaitForExchange(4)
+		var prompt = "> ".Encode()
+		this.Expect(prompt)
+		var hello = "hello\n".Encode()
+		this.Transmit(hello)
+		this.WaitForExchange(24)
+		var helloExchange = "hello\r\nHello\r\n> ".Encode()
+		this.Expect(helloExchange)
+		var help = "help\n".Encode()
+		this.Transmit(help)
+		this.WaitForExchange(36)
+		var helpExchange = "help\r\nhelp hello bye echo\r\n> ".Encode()
+		this.Expect(helpExchange)
+		var echo = "echo one two\n".Encode()
+		this.Transmit(echo)
+		this.WaitForExchange(36)
+		var echoExchange = "echo one two\r\none two\r\n> ".Encode()
+		this.Expect(echoExchange)
+		var tooMany = "echo 1 2 3 4 5 6 7 8 9\n".Encode()
+		this.Transmit(tooMany)
+		this.WaitForExchange(64)
+		var tooManyExchange = "echo 1 2 3 4 5 6 7 8 9\r\nError: too many arguments\r\n> ".Encode()
+		this.Expect(tooManyExchange)
+		assert this.uartTester.Transmit(0x68) == true
+		assert this.uartTester.Transmit(0x65) == true
+		assert this.uartTester.Transmit(0x6C) == true
+		assert this.uartTester.Transmit(0x6C) == true
+		assert this.uartTester.Transmit(0x70) == true
+		assert this.uartTester.Transmit(0x08) == true
+		assert this.uartTester.Transmit(0x6F) == true
+		assert this.uartTester.Transmit(0x0A) == true
+		this.WaitForExchange(32)
+		var editedPrefix = "hellp".Encode()
+		this.Expect(editedPrefix)
+		this.ExpectByte(0x08)
+		this.ExpectByte(0x20)
+		this.ExpectByte(0x08)
+		var editedSuffix = "o\r\nHello\r\n> ".Encode()
+		this.Expect(editedSuffix)
+		var unknown = "nope\r\n".Encode()
+		this.Transmit(unknown)
+		this.WaitForExchange(36)
+		var unknownExchange = "nope\r\nUnknown command\r\n> ".Encode()
+		this.Expect(unknownExchange)
+		assert this.uartTester.IsDataAvailable() == false
 	}
 }

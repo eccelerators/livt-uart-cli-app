@@ -1,156 +1,116 @@
-# UART CLI App for Livt
+# UART CLI application for Livt
 
-This package provides a small UART-driven command-line application in Livt. It
-collects bytes from UART, echoes typed characters, dispatches complete command
-lines, and streams command responses back over UART.
+This repository is the complete UART example for the reusable
+`Eccelerators.Cli` package. It connects `Eccelerators.Cli.Cli` to
+`Livt.IO.Uart` and demonstrates static FPGA command dispatch, arguments,
+editing, prompts, and lossless transmit backpressure.
 
-For background on the line-buffered command loop and command components, see
-[DESIGN_NOTE.md](DESIGN_NOTE.md).
+The first stable release is `1.0.0`.
 
-## 📋 Overview
+## Terminal behavior
 
-The current package is organized around one top-level application and a small
-set of command components:
+- prompt: `> `
+- local echo enabled
+- `CR`, `LF`, and `CRLF` accepted
+- backspace and delete editing
+- responses terminated with `CRLF`
+- 64-byte maximum command line
+- 64-byte buffered CLI output
+- eight maximum arguments; longer argument lists are rejected before dispatch
 
-- `UartCliApp` owns the UART instance, input queue, and command loop.
-- `CommandParser` converts a completed input line into a command component.
-- `HelpCommand`, `HelloCommand`, `ByeCommand`, and `UnknownCommand` provide
-  concrete response behavior.
+Supported commands:
 
-The example supports these commands:
+| Command | Response |
+|---|---|
+| `help` | `help hello bye echo` |
+| `hello` | `Hello` |
+| `bye` | `Bye` |
+| `echo one two` | `one two` |
+| any other command | `Unknown command` |
 
-- `help`
-- `hello`
-- `bye`
-
-Unknown input returns `Unknown`. `CRLF` terminal input is supported by
-ignoring `CR` and executing the command on `LF`.
-
-## 📁 Project Structure
-
-```text
-.
-├── src/
-│   ├── ByeCommand.lvt
-│   ├── CommandInterface.lvt
-│   ├── CommandParser.lvt
-│   ├── HelloCommand.lvt
-│   ├── HelpCommand.lvt
-│   ├── UartCliApp.lvt
-│   └── UnknownCommand.lvt
-├── tests/
-│   └── UartCliAppTest.lvt
-├── DESIGN_NOTE.md
-├── LICENSE
-├── README.md
-└── livt.toml
-```
-
-## 🔨 Building
-
-Build the package with:
-
-```bash
-livt build
-```
-
-The package configuration is defined in [`livt.toml`](livt.toml). The current
-project name there is `UartCliApp`.
-
-## 🧪 Running Tests
-
-Run the full test suite with:
-
-```bash
-livt test
-```
-
-Configured test components:
-
-- `UartCliAppTest`
-
-The integration test simulates UART sessions for `hello`, `bye`, `help`, and an
-unknown command submitted with `CRLF`.
-
-## 📚 Component Guide
-
-### `UartCliApp`
-
-Top-level UART command application in the `Livt.App` namespace.
-
-Features:
-
-- UART receive and transmit integration through the external `Uart` package
-- typed-character echo
-- command execution on `LF`
-- `CR` ignored for common `CRLF` terminal input
-- FIFO line buffering through the external `Queue` package
-
-Constructor:
-
-- `new(rx: in logic, tx: out logic)`
-
-### Commands
-
-All commands implement `CommandInterface`.
-
-| Command | Input | Response |
-| ------- | ----- | -------- |
-| `HelpCommand` | `help` | `hello bye` |
-| `HelloCommand` | `hello` | `Hello` |
-| `ByeCommand` | `bye` | `Bye` |
-| `UnknownCommand` | any other line | `Unknown` |
-
-## 💡 Usage
-
-Instantiate `UartCliApp` with UART RX and TX signals and connect it to a serial
-terminal configured for the same baud settings as the underlying `Uart` package.
-By default, the `Uart` package uses `TICKS_PER_BIT = 868`, which corresponds to
-115200 baud with a 100 MHz clock.
-
-A typical terminal session looks like:
+Example:
 
 ```text
-help
-hello bye
-hello
+> help
+help hello bye echo
+> echo FPGA CLI
+FPGA CLI
+> hello
 Hello
-bye
-Bye
+>
 ```
 
-Typed command characters are echoed before the response is sent.
+## Architecture
 
-## 🔧 Configuration
+`UartCliApp` owns one `Livt.IO.Uart` and one `Eccelerators.Cli.Cli`. Its continuous
+process:
 
-This package depends on:
+1. services pending prompts;
+2. dispatches a completed command;
+3. moves one queued CLI byte into UART when transmit space is available;
+4. supplies one received UART byte when the CLI can accept it.
 
-- `Uart = "1.0.0"`
-- `Queue = "1.0.0"`
+Responses are written to the CLI output FIFO before command completion. UART
+bytes are consumed from that FIFO only after `Uart.Transmit()` succeeds.
 
-`Queue` is used as the bounded FIFO input-line buffer.
+Commands are deliberately dispatched in `UartCliApp.DispatchCommand()`. To add
+a synthesized command, add an exact `CommandEquals()` branch and a handler that
+returns false until its complete response can be queued. This ownership pattern
+keeps application policy separate from the reusable CLI core. The `echo` command
+delegates its reusable space-separated argument formatting and atomic CRLF
+output to `Cli.TryWriteArgumentsLine()`.
 
-## 📝 Notes
+## Dependencies
 
-- This is an application-level example, not a UART implementation.
-- The UART transport is provided by the external `Uart` package.
-- The command loop is intentionally small and bounded so the design remains easy
-  to understand and test.
-- Input longer than the queue capacity is ignored by the queue once it is full.
-- Command responses are kept within the UART transmit FIFO capacity.
+The project uses the published CLI and UART packages:
 
-## 🤝 Contributing
+```toml
+[dependencies]
+"Eccelerators.Cli" = "1.0.0"
+"Livt.IO" = "1.0.0"
+```
 
-Contributions are welcome. Areas that would be natural extensions for this
-package include:
+Both dependencies are synchronized from the package registry. The CLI package
+uses `Livt.IO.Ram` for its parser and output buffers, so applications do not need
+to provide separate CLI storage components.
 
-- configurable command-line length
-- explicit overflow reporting for overlong input
-- paced response scheduling for longer command output
-- prompt and line-ending response formatting
-- argument parsing beyond exact command matching
-- backspace handling or simple line editing
+After publishing, consume this complete application from another Livt project
+with:
 
-## 📄 License
+```toml
+[dependencies]
+"UartCliApp" = "1.0.0"
+```
 
-This project is licensed under the MIT License. See [LICENSE](LICENSE).
+## Hardware interface
+
+The generated Vivado wrapper exposes `Clk`, active-high `Rst`, `rx`, and `tx`.
+Its clock context is fixed at 100 MHz. The `Livt.IO` UART uses 868 clock ticks
+per bit, which provides 115200 baud at that clock rate, with 8 data bits, no
+parity, and one stop bit (8-N-1). Connect `rx` and `tx` to 3.3 V UART logic; use
+an appropriate USB-to-UART adapter rather than RS-232 voltage levels.
+
+## Build and test
+
+```bash
+livt validate
+livt test
+livt build --release -W all,error
+```
+
+The UART integration test runs an interactive session covering the prompt,
+help, argument echo, excessive arguments, backspace editing, CRLF handling,
+unknown commands, and multiple consecutive command responses.
+
+## Project layout
+
+```text
+src/UartCliApp.lvt
+tests/UartCliAppTest.lvt
+CHANGELOG.md
+livt.toml
+```
+
+## License
+
+MIT. See [LICENSE](LICENSE).

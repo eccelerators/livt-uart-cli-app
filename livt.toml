@@ -9,5 +9,27 @@ path = "tests"
 components = ["UartCliAppTest"]
 
 [dependencies]
-Uart = "1.0.0"
-Queue = "1.0.0"
+"Eccelerators.Cli" = "1.0.0"
+"Livt.IO" = "1.0.1"
+
+[build.debug]
+warnings = ["all"]
+
+[build.release]
+warnings = ["all"]
+
+[vendor.vivado]
+part = "xc7a35tcpg236-1"
+
+[vendor.vivado.ip]
+wrapper = "auto"
+
+top = "uartcliapp_wrapper"
+vendor = "eccelerators.com"
+library = "user"
+name = "uartcliapp"
+version = "1.0.0"
+display_name = "UartCliApp"
+description = "Vivado IP generated from a Livt project"
+taxonomy = "/UserIP"
+include_tests = true
