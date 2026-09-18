@@ -2,7 +2,7 @@
 
 This repository is the complete UART example for the reusable
 `Eccelerators.Cli` package. It connects `Eccelerators.Cli.Cli` to
-`Livt.IO.Uart` and demonstrates static FPGA command dispatch, arguments,
+`Livt.IO.BufferedUart` and demonstrates static FPGA command dispatch, arguments,
 editing, prompts, and lossless transmit backpressure.
 
 The first stable release is `1.0.0`.
@@ -42,16 +42,23 @@ Hello
 
 ## Architecture
 
-`UartCliApp` owns one `Livt.IO.Uart` and one `Eccelerators.Cli.Cli`. Its continuous
+`UartCliApp` owns one `Livt.IO.BufferedUart` and one `Eccelerators.Cli.Cli`. Its continuous
 process:
 
 1. services pending prompts;
 2. dispatches a completed command;
-3. moves one queued CLI byte into UART when transmit space is available;
-4. supplies one received UART byte when the CLI can accept it.
+3. attempts to enqueue one CLI output byte through `TryTransmit`;
+4. attempts `TryReceive` only when the CLI can accept another input byte.
 
 Responses are written to the CLI output FIFO before command completion. UART
-bytes are consumed from that FIFO only after `Uart.Transmit()` succeeds.
+bytes are consumed from that FIFO only after `BufferedUart.TryTransmit()` succeeds.
+Success means FIFO acceptance, not completion on the wire; rejected output stays
+queued for retry. `TryReceive` removes a byte only on success and assigns zero
+on failure, so empty input is not passed to the CLI as a received zero byte.
+
+One process owns CLI input, preserving capacity between checking and accepting
+a received byte. The basic UART has finite receive storage and no RTS/CTS pins;
+the peer must pace input if command processing stalls for an extended period.
 
 Commands are deliberately dispatched in `UartCliApp.DispatchCommand()`. To add
 a synthesized command, add an exact `CommandEquals()` branch and a handler that
@@ -66,8 +73,8 @@ The project uses the published CLI and UART packages:
 
 ```toml
 [dependencies]
-"Eccelerators.Cli" = "1.0.0"
-"Livt.IO" = "1.0.0"
+"Eccelerators.Cli" = "1.1.0"
+"Livt.IO" = "1.2.0-dev"
 ```
 
 Both dependencies are synchronized from the package registry. The CLI package
@@ -85,10 +92,13 @@ with:
 ## Hardware interface
 
 The generated Vivado wrapper exposes `Clk`, active-high `Rst`, `rx`, and `tx`.
-Its clock context is fixed at 100 MHz. The `Livt.IO` UART uses 868 clock ticks
-per bit, which provides 115200 baud at that clock rate, with 8 data bits, no
+At the wrapper's 100 MHz clock context, the default UART baud configuration
+selects 868 clock ticks per bit, approximately 115200 baud, with 8 data bits, no
 parity, and one stop bit (8-N-1). Connect `rx` and `tx` to 3.3 V UART logic; use
-an appropriate USB-to-UART adapter rather than RS-232 voltage levels.
+an appropriate USB-to-UART adapter rather than RS-232 voltage levels. Bit timing
+is derived from the inherited component context; keep its frequency metadata
+consistent with the actual board clock. The integration test explicitly uses
+a 100 MHz context and checks timing against an independent 868-tick expectation.
 
 ## Build and test
 

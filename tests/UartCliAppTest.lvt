@@ -4,14 +4,18 @@ using Livt.App
 using Livt.IO
 
 @Test
+@Context(ClockFrequency=100MHz)
 component UartCliAppTest
 {
-	app: UartCliApp
+	// Independent expected period for the default 115200 baud at 100 MHz.
+	const EXPECTED_TICKS_PER_BIT: int = 868
 
+	// Application under test and its buffered serial peer.
+	app: UartCliApp
 	uartTester: BufferedUart
 
+	// Cross-connected serial wires.
 	rx: logic
-
 	tx: logic
 
 	/**
@@ -29,7 +33,7 @@ component UartCliAppTest
 	fn Transmit(data: byte[])
 	{
 		for (var i = 0; i < data.Length(); i++) {
-			assert this.uartTester.Transmit(data[i]) == true
+			assert this.uartTester.TryTransmit(data[i]) == true
 		}
 	}
 
@@ -39,8 +43,9 @@ component UartCliAppTest
 	fn Expect(data: byte[])
 	{
 		for (var i = 0; i < data.Length(); i++) {
-			assert this.uartTester.IsDataAvailable() == true
-			assert this.uartTester.Receive() == data[i]
+			var received: byte
+			assert this.uartTester.TryReceive(received) == true
+			assert received == data[i]
 		}
 	}
 
@@ -49,8 +54,9 @@ component UartCliAppTest
 	 */
 	fn ExpectByte(value: byte)
 	{
-		assert this.uartTester.IsDataAvailable() == true
-		assert this.uartTester.Receive() == value
+		var received: byte
+		assert this.uartTester.TryReceive(received) == true
+		assert received == value
 	}
 
 	/**
@@ -58,7 +64,7 @@ component UartCliAppTest
 	 */
 	fn WaitForExchange(byteCount: int)
 	{
-		Simulation.Wait(UartTransmitter.TICKS_PER_BIT * 12 * byteCount)
+		Simulation.Wait(EXPECTED_TICKS_PER_BIT * 12 * byteCount)
 	}
 
 	@Test
@@ -87,14 +93,14 @@ component UartCliAppTest
 		this.WaitForExchange(64)
 		var tooManyExchange = "echo 1 2 3 4 5 6 7 8 9\r\nError: too many arguments\r\n> ".Encode()
 		this.Expect(tooManyExchange)
-		assert this.uartTester.Transmit(0x68) == true
-		assert this.uartTester.Transmit(0x65) == true
-		assert this.uartTester.Transmit(0x6C) == true
-		assert this.uartTester.Transmit(0x6C) == true
-		assert this.uartTester.Transmit(0x70) == true
-		assert this.uartTester.Transmit(0x08) == true
-		assert this.uartTester.Transmit(0x6F) == true
-		assert this.uartTester.Transmit(0x0A) == true
+		assert this.uartTester.TryTransmit(0x68) == true
+		assert this.uartTester.TryTransmit(0x65) == true
+		assert this.uartTester.TryTransmit(0x6C) == true
+		assert this.uartTester.TryTransmit(0x6C) == true
+		assert this.uartTester.TryTransmit(0x70) == true
+		assert this.uartTester.TryTransmit(0x08) == true
+		assert this.uartTester.TryTransmit(0x6F) == true
+		assert this.uartTester.TryTransmit(0x0A) == true
 		this.WaitForExchange(32)
 		var editedPrefix = "hellp".Encode()
 		this.Expect(editedPrefix)
@@ -108,6 +114,10 @@ component UartCliAppTest
 		this.WaitForExchange(36)
 		var unknownExchange = "nope\r\nUnknown command\r\n> ".Encode()
 		this.Expect(unknownExchange)
-		assert this.uartTester.IsDataAvailable() == false
+		var remaining: byte
+		assert this.uartTester.TryReceive(remaining) == false
+		assert remaining == 0x00
+		assert this.uartTester.GetFrameErrorCount() == 0
+		assert this.uartTester.GetReceiveOverflowCount() == 0
 	}
 }

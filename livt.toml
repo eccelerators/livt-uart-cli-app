@@ -9,8 +9,8 @@ path = "tests"
 components = ["UartCliAppTest"]
 
 [dependencies]
-"Eccelerators.Cli" = "1.0.0"
-"Livt.IO" = "1.0.1"
+"Eccelerators.Cli" = "1.1.0"
+"Livt.IO" = "1.2.0-dev"
 
 [build.debug]
 warnings = ["all"]

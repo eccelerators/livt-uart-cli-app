@@ -2,6 +2,13 @@
 
 All notable changes to this package are documented here.
 
+## Unreleased
+
+- Migrate to `Livt.IO 1.2.0-dev` and `Eccelerators.Cli 1.1.0`.
+- Use `BufferedUart` with acceptance-based transmit and receive operations.
+- Update the interactive UART regression for context-derived timing and the
+  current buffered API, including empty-read and receive-error checks.
+
 ## 1.0.0 - 2026-08-26
 
 - Add a complete UART application for the published `Eccelerators.Cli` core.
