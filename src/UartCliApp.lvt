@@ -4,6 +4,18 @@ using Eccelerators.Cli
 using Livt.IO
 
 /**
+ * Statically synthesized commands supported by the application.
+ */
+enum AppCommand
+{
+	Help
+	Hello
+	Bye
+	Echo
+	Unknown
+}
+
+/**
  * UART transport adapter and example application for Eccelerators.Cli.
  */
 component UartCliApp
@@ -56,46 +68,68 @@ component UartCliApp
 	}
 
 	/**
-	 * Matches and executes one statically synthesized application command.
+	 * Maps the pending command to exactly one application command value.
 	 */
-	fn DispatchCommand() bool
+	fn ClassifyCommand() AppCommand
 	{
 		var help = "help".Encode()
-		var isHelp: bool = this.cli.CommandEquals(help)
-
-		if (isHelp == true) {
-			var helpMessage = "help hello bye echo".Encode()
-			var helpWritten: bool = this.cli.TryWriteLine(helpMessage)
-			return helpWritten
+		if (this.cli.CommandEquals(help) == true) {
+			return AppCommand.Help
 		}
 
 		var hello = "hello".Encode()
-		var isHello: bool = this.cli.CommandEquals(hello)
-
-		if (isHello == true) {
-			var helloMessage = "Hello".Encode()
-			var helloWritten: bool = this.cli.TryWriteLine(helloMessage)
-			return helloWritten
+		if (this.cli.CommandEquals(hello) == true) {
+			return AppCommand.Hello
 		}
 
 		var bye = "bye".Encode()
-		var isBye: bool = this.cli.CommandEquals(bye)
-
-		if (isBye == true) {
-			var byeMessage = "Bye".Encode()
-			var byeWritten: bool = this.cli.TryWriteLine(byeMessage)
-			return byeWritten
+		if (this.cli.CommandEquals(bye) == true) {
+			return AppCommand.Bye
 		}
 
 		var echo = "echo".Encode()
-		var isEcho: bool = this.cli.CommandEquals(echo)
-
-		if (isEcho == true) {
-			return this.cli.TryWriteArgumentsLine()
+		if (this.cli.CommandEquals(echo) == true) {
+			return AppCommand.Echo
 		}
 
-		var unknownMessage = "Unknown command".Encode()
-		var unknownWritten: bool = this.cli.TryWriteLine(unknownMessage)
-		return unknownWritten
+		return AppCommand.Unknown
+	}
+
+	/**
+	 * Executes the pending command; returns true when its response was written.
+	 * The exhaustive match handles every AppCommand member: adding a new command
+	 * makes an incomplete dispatch visible at compile time.
+	 */
+	fn DispatchCommand() bool
+	{
+		var command = ClassifyCommand()
+
+		match command
+		{
+			AppCommand.Help =>
+			{
+				var helpMessage = "help hello bye echo".Encode()
+				return cli.TryWriteLine(helpMessage)
+			}
+			AppCommand.Hello =>
+			{
+				var helloMessage = "Hello".Encode()
+				return cli.TryWriteLine(helloMessage)
+			}
+			AppCommand.Bye =>
+			{
+				var byeMessage = "Bye".Encode()
+				return cli.TryWriteLine(byeMessage)
+			}
+			AppCommand.Echo =>
+			{
+				return cli.TryWriteArgumentsLine()
+			}
+			AppCommand.Unknown =>
+			{
+				var unknownMessage = "Unknown command".Encode()
+				return cli.TryWriteLine(unknownMessage)
+			}
+		}
 	}
 }
