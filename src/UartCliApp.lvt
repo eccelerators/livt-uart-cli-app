@@ -4,131 +4,72 @@ using Eccelerators.Cli
 using Livt.IO
 
 /**
- * Statically synthesized commands supported by the application.
- */
-enum AppCommand
-{
-	Help
-	Hello
-	Bye
-	Echo
-	Unknown
-}
-
-/**
- * UART transport adapter and example application for Eccelerators.Cli.
+ * Owns the UART, CLI and command policy in the inherited clock context.
+ * One process services input, command responses and output without racing retries.
  */
 component UartCliApp
 {
-	// Buffered byte transport and the transport-independent command processor.
+	// Owned transport and terminal state.
 	uart: BufferedUart
 	cli: Cli
 
+	// Owned operations, all borrowing the caller's terminal.
+	help: HelpCommand
+	hello: HelloCommand
+	bye: ByeCommand
+	echo: EchoCommand
+	unknown: UnknownCommand
+
+	// Fixed hardware chain in dispatch order: help, hello, bye, echo, fallback.
+	helpRegistration: CommandRegistration
+	helloRegistration: CommandRegistration
+	byeRegistration: CommandRegistration
+	echoRegistration: CommandRegistration
+	dispatcher: CommandDispatcher
+
 	/**
-	 * Creates the UART, reusable CLI core, and application command dispatcher.
+	 * Connects UART pins and registers commands before the service process starts.
 	 */
 	new(rx: in logic, tx: out logic)
 	{
 		this.uart = new BufferedUart(rx, tx)
-		this.cli = new Cli(true)
+		this.cli = new Cli(echoEnabled = true)
+		this.help = new HelpCommand(this.cli)
+		this.hello = new HelloCommand(this.cli)
+		this.bye = new ByeCommand(this.cli)
+		this.echo = new EchoCommand(this.cli)
+		this.unknown = new UnknownCommand(this.cli)
+
+		// Wire from the tail so every continuation exists before it is borrowed.
+		this.echoRegistration = new CommandRegistration(this.echo, this.unknown)
+		this.byeRegistration = new CommandRegistration(this.bye, this.echoRegistration)
+		this.helloRegistration = new CommandRegistration(this.hello, this.byeRegistration)
+		this.helpRegistration = new CommandRegistration(this.help, this.helloRegistration)
+		this.dispatcher = new CommandDispatcher(this.cli, this.helpRegistration)
 	}
 
 	/**
-	 * Services prompts, commands, UART output, and UART input with backpressure.
+	 * Retries pending work and transfers at most one byte in each direction per turn.
+	 * Output stays queued until the UART accepts it. This is the sole input owner.
 	 */
 	process Main()
 	{
 		this.cli.Service()
+		this.dispatcher.Dispatch()
 
-		if (this.cli.HasCommand() == true) {
-			var dispatched: bool = this.DispatchCommand()
+		if (this.cli.HasOutput()) {
+			let outputByte = this.cli.PeekOutput()
 
-			if (dispatched == true) {
-				this.cli.CompleteCommand()
-			}
-		}
-
-		if (this.cli.HasOutput() == true) {
-			var outputByte: byte = this.cli.PeekOutput()
-
-			if (this.uart.TryTransmit(outputByte) == true) {
+			if (this.uart.TryTransmit(outputByte)) {
 				this.cli.ConsumeOutput()
 			}
 		}
 
-		// This process is the only CLI input owner, so capacity remains available
-		// between the check and delivery of a successfully removed UART byte.
-		if (this.cli.CanAcceptByte() == true) {
+		if (this.cli.CanAcceptByte()) {
 			var inputByte: byte
 
-			if (this.uart.TryReceive(inputByte) == true) {
+			if (this.uart.TryReceive(inputByte)) {
 				this.cli.AcceptByte(inputByte)
-			}
-		}
-	}
-
-	/**
-	 * Maps the pending command to exactly one application command value.
-	 */
-	fn ClassifyCommand() AppCommand
-	{
-		var help = "help".Encode()
-		if (this.cli.CommandEquals(help) == true) {
-			return AppCommand.Help
-		}
-
-		var hello = "hello".Encode()
-		if (this.cli.CommandEquals(hello) == true) {
-			return AppCommand.Hello
-		}
-
-		var bye = "bye".Encode()
-		if (this.cli.CommandEquals(bye) == true) {
-			return AppCommand.Bye
-		}
-
-		var echo = "echo".Encode()
-		if (this.cli.CommandEquals(echo) == true) {
-			return AppCommand.Echo
-		}
-
-		return AppCommand.Unknown
-	}
-
-	/**
-	 * Executes the pending command; returns true when its response was written.
-	 * The exhaustive match handles every AppCommand member: adding a new command
-	 * makes an incomplete dispatch visible at compile time.
-	 */
-	fn DispatchCommand() bool
-	{
-		var command = ClassifyCommand()
-
-		match command
-		{
-			AppCommand.Help =>
-			{
-				var helpMessage = "help hello bye echo".Encode()
-				return cli.TryWriteLine(helpMessage)
-			}
-			AppCommand.Hello =>
-			{
-				var helloMessage = "Hello".Encode()
-				return cli.TryWriteLine(helloMessage)
-			}
-			AppCommand.Bye =>
-			{
-				var byeMessage = "Bye".Encode()
-				return cli.TryWriteLine(byeMessage)
-			}
-			AppCommand.Echo =>
-			{
-				return cli.TryWriteArgumentsLine()
-			}
-			AppCommand.Unknown =>
-			{
-				var unknownMessage = "Unknown command".Encode()
-				return cli.TryWriteLine(unknownMessage)
 			}
 		}
 	}

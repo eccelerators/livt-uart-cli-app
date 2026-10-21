@@ -2,12 +2,21 @@
 
 All notable changes to this package are documented here.
 
-## Unreleased
+## 1.1.0
 
-- Migrate to `Livt.IO 1.2.0-dev` and `Eccelerators.Cli 1.1.0`.
-- Use `BufferedUart` with acceptance-based transmit and receive operations.
-- Update the interactive UART regression for context-derived timing and the
-  current buffered API, including empty-read and receive-error checks.
+- Use the published `Eccelerators.Cli 1.3.0` and `Livt.IO 1.2.0` packages.
+- Register `help`, `hello`, `bye` and `echo` as `ICommand` components using the
+  CLI package's constructor-wired registration chain and dispatcher.
+- Show transport setup, command ownership and registration together in
+  `UartCliApp`; keep the unknown-command response application-defined.
+- Use `BufferedUart` with acceptance-based transmit and receive operations,
+  preserving queued output and pending commands under backpressure.
+- Use named constructor arguments, immutable locals and direct boolean checks
+  to make application intent clearer.
+- Add two fast Livt tests covering command responses, prompts, exact matching
+  and retries with a full output queue. Keep the long UART integration scenario
+  commented out and outside the default suite.
+- Update installation examples and document the inherited clock and board setup.
 
 ## 1.0.0 - 2026-08-26
 

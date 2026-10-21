@@ -1,0 +1,161 @@
+namespace Livt.App.Tests
+
+using Livt.App
+using Eccelerators.Cli
+
+/**
+ * Exercises real CLI parsing and output queues directly, without serial-bit waits.
+ * Each test resets the shared CLI; only the test process drives the borrowed state.
+ */
+@Test
+@Context(ClockFrequency = 100MHz)
+component CliCommandsTest
+{
+	// Owned CLI and command policy; echo is disabled to isolate command responses.
+	cli: Cli
+
+	// Owned operations, all borrowing the caller's terminal.
+	help: HelpCommand
+	hello: HelloCommand
+	bye: ByeCommand
+	echo: EchoCommand
+	unknown: UnknownCommand
+
+	// Fixed hardware chain in dispatch order: help, hello, bye, echo, fallback.
+	helpRegistration: CommandRegistration
+	helloRegistration: CommandRegistration
+	byeRegistration: CommandRegistration
+	echoRegistration: CommandRegistration
+	dispatcher: CommandDispatcher
+
+	/**
+	 * Builds the production command policy around a silent terminal fixture.
+	 */
+	new()
+	{
+		this.cli = new Cli(echoEnabled = false)
+		this.help = new HelpCommand(this.cli)
+		this.hello = new HelloCommand(this.cli)
+		this.bye = new ByeCommand(this.cli)
+		this.echo = new EchoCommand(this.cli)
+		this.unknown = new UnknownCommand(this.cli)
+
+		// Wire from the tail so every continuation exists before it is borrowed.
+		this.echoRegistration = new CommandRegistration(this.echo, this.unknown)
+		this.byeRegistration = new CommandRegistration(this.bye, this.echoRegistration)
+		this.helloRegistration = new CommandRegistration(this.hello, this.byeRegistration)
+		this.helpRegistration = new CommandRegistration(this.help, this.helloRegistration)
+		this.dispatcher = new CommandDispatcher(this.cli, this.helpRegistration)
+	}
+
+	/**
+	 * Consumes exactly the expected bytes, failing on missing or different output.
+	 */
+	fn Expect(expected: byte[])
+	{
+		for (var index = 0; index < expected.Length; index++) {
+			assert this.cli.HasOutput()
+			assert this.cli.PeekOutput() == expected[index]
+			assert this.cli.ConsumeOutput()
+		}
+	}
+
+	/**
+	 * Starts a clean session and consumes its initial prompt.
+	 */
+	fn StartSession()
+	{
+		this.cli.Reset()
+		assert this.cli.Service()
+		this.Expect("> ".Encode())
+		assert !this.cli.HasOutput()
+	}
+
+	/**
+	 * Submits a complete command line through the real CLI parser.
+	 */
+	fn QueueCommand(line: byte[])
+	{
+		for (var index = 0; index < line.Length; index++) {
+			assert this.cli.AcceptByte(line[index])
+		}
+
+		assert this.cli.HasCommand()
+	}
+
+	/**
+	 * Checks one response and prompt, then verifies idle dispatch emits nothing.
+	 */
+	fn FinishCommand(expected: byte[])
+	{
+		this.dispatcher.Dispatch()
+		assert !this.cli.HasCommand()
+		this.Expect(expected)
+		assert this.cli.Service()
+		this.Expect("> ".Encode())
+		this.dispatcher.Dispatch()
+		assert !this.cli.HasOutput()
+	}
+
+	/**
+	 * Checks every command, argument formatting, exact matching and repeated use.
+	 */
+	@Test
+	fn DispatchesCommandsAndRejectsUnknownNames()
+	{
+		this.StartSession()
+		this.QueueCommand("help\n".Encode())
+		this.FinishCommand("help hello bye echo\r\n".Encode())
+		this.QueueCommand("hello\n".Encode())
+		this.FinishCommand("Hello\r\n".Encode())
+		this.QueueCommand("bye\n".Encode())
+		this.FinishCommand("Bye\r\n".Encode())
+		this.QueueCommand("echo one two\n".Encode())
+		this.FinishCommand("one two\r\n".Encode())
+		this.QueueCommand("echo\n".Encode())
+		this.FinishCommand("\r\n".Encode())
+		this.QueueCommand("hell\n".Encode())
+		this.FinishCommand("Unknown command\r\n".Encode())
+		this.QueueCommand("helloAgain\n".Encode())
+		this.FinishCommand("Unknown command\r\n".Encode())
+		this.QueueCommand("hello\n".Encode())
+		this.FinishCommand("Hello\r\n".Encode())
+	}
+
+	/**
+	 * Blocks a pending response twice, then frees space and requires exactly one reply.
+	 */
+	fn CheckBlockedResponse(line: byte[], expected: byte[])
+	{
+		this.StartSession()
+		this.QueueCommand(line)
+
+		for (var index = 0; index < 64; index++) {
+			assert this.cli.TryWriteByte(0x78)
+		}
+
+		this.dispatcher.Dispatch()
+		this.dispatcher.Dispatch()
+		assert this.cli.HasCommand()
+		assert this.cli.GetOutputCount() == 64
+
+		for (var index = 0; index < 64; index++) {
+			assert this.cli.PeekOutput() == 0x78
+			assert this.cli.ConsumeOutput()
+		}
+
+		this.FinishCommand(expected)
+	}
+
+	/**
+	 * Preserves recognized, argument-based and fallback responses under backpressure.
+	 */
+	@Test
+	fn RetriesBlockedResponsesWithoutCompletingOrDuplicating()
+	{
+		this.CheckBlockedResponse("hello\n".Encode(), "Hello\r\n".Encode())
+		this.CheckBlockedResponse("echo one two\n".Encode(), "one two\r\n".Encode())
+		this.CheckBlockedResponse("unknown\n".Encode(), "Unknown command\r\n".Encode())
+	}
+
+}

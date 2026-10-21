@@ -1,0 +1,22 @@
+namespace Livt.App
+
+using Eccelerators.Cli
+
+/**
+ * Terminates a registry, or serves as an empty registry by itself.
+ */
+component UnknownCommand : ICommandRegistry
+{
+	// Borrowed terminal output; completion belongs to the dispatcher.
+	cli: Cli
+
+	new(cli: Cli)
+	{
+		this.cli = cli
+	}
+
+	override fn TryRespond() bool
+	{
+		return this.cli.TryWriteLine("Unknown command".Encode())
+	}
+}

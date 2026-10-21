@@ -1,0 +1,27 @@
+namespace Livt.App
+
+using Eccelerators.Cli
+
+/**
+ * Handles hello using the caller's CLI, without owning its lifecycle.
+ */
+component HelloCommand : ICommand
+{
+	// Borrowed parser and output queue, serialized by the dispatcher.
+	cli: Cli
+
+	new(cli: Cli)
+	{
+		this.cli = cli
+	}
+
+	override fn Matches() bool
+	{
+		return this.cli.CommandEquals("hello".Encode())
+	}
+
+	override fn TryExecute() bool
+	{
+		return this.cli.TryWriteLine("Hello".Encode())
+	}
+}
