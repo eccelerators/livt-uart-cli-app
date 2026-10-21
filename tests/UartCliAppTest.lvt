@@ -3,122 +3,87 @@ namespace Livt.App.Tests
 using Livt.App
 using Livt.IO
 
+/**
+ * Pin-level smoke test: initial prompt, echo, response and a second command.
+ * Detailed parsing and command behavior are covered by byte-level tests.
+ */
 @Test
-@Context(ClockFrequency=100MHz)
+@Context(ClockFrequency = 100MHz)
 component UartCliAppTest
 {
-	// Independent expected period for the default 115200 baud at 100 MHz.
-	const EXPECTED_TICKS_PER_BIT: int = 868
+	// Faster serial simulation; the application's default remains 115200 Hz.
+	const TEST_BAUD: Frequency = 1MHz
+	const POLL_TICKS: int = 100
+	const MAX_RECEIVE_POLLS: int = 256
 
-	// Application under test and its buffered serial peer.
-	app: UartCliApp
-	uartTester: BufferedUart
+	// Application and independent serial peer use the same explicit test baud rate.
+	app: UartCliApp<TEST_BAUD>
+	uartTester: BufferedUart<32, 8, UartDataBits.Eight, UartParity.None, UartStopBits.One, TEST_BAUD>
 
-	// Cross-connected serial wires.
+	// Cross-connected serial wires; no direct access to application CLI state.
 	rx: logic
 	tx: logic
 
-	/**
-	 * Creates the application and a UART peer connected in a loop.
-	 */
 	new()
 	{
-		this.app = new UartCliApp(this.rx, this.tx)
-		this.uartTester = new BufferedUart(this.tx, this.rx)
+		this.app = new UartCliApp<TEST_BAUD>(this.rx, this.tx)
+		this.uartTester = new BufferedUart<32, 8, UartDataBits.Eight, UartParity.None,
+			UartStopBits.One, TEST_BAUD>(this.tx, this.rx)
 	}
 
 	/**
-	 * Queues every byte in a test message for transmission to the application.
+	 * Both smoke-test commands fit the peer's eight-byte transmit queue.
 	 */
 	fn Transmit(data: byte[])
 	{
-		for (var i = 0; i < data.Length(); i++) {
-			assert this.uartTester.TryTransmit(data[i]) == true
+		for (var index = 0; index < data.Length; index++) {
+			assert this.uartTester.TryTransmit(data[index])
 		}
 	}
 
 	/**
-	 * Verifies and consumes every byte in an expected application message.
+	 * Consumes a byte as soon as it arrives. Polling is bounded so missing output
+	 * fails instead of hanging; the budget includes application processing time.
 	 */
+	fn ExpectByte(expected: byte)
+	{
+		for (var attempt = 0; attempt < MAX_RECEIVE_POLLS; attempt++) {
+			var received: byte
+
+			if (this.uartTester.TryReceive(received)) {
+				assert received == expected
+				return
+			}
+
+			Simulation.Wait(POLL_TICKS)
+		}
+
+		assert false, "Timed out waiting for application UART output"
+	}
+
 	fn Expect(data: byte[])
 	{
-		for (var i = 0; i < data.Length(); i++) {
-			var received: byte
-			assert this.uartTester.TryReceive(received) == true
-			assert received == data[i]
+		for (var index = 0; index < data.Length; index++) {
+			this.ExpectByte(data[index])
 		}
 	}
 
-	/**
-	 * Verifies and consumes one expected application byte.
-	 */
-	fn ExpectByte(value: byte)
+	@Test
+	fn ExchangesTwoCommandsAtTestBaudRate()
 	{
-		var received: byte
-		assert this.uartTester.TryReceive(received) == true
-		assert received == value
-	}
+		this.Expect("> ".Encode())
+		this.Transmit("hello\n".Encode())
+		this.Expect("hello\r\nHello\r\n> ".Encode())
+		this.Transmit("bye\n".Encode())
+		this.Expect("bye\r\nBye\r\n> ".Encode())
 
-	/**
-	 * Waits long enough to transmit, execute, and receive a bounded CLI exchange.
-	 */
-	fn WaitForExchange(byteCount: int)
-	{
-		Simulation.Wait(EXPECTED_TICKS_PER_BIT * 12 * byteCount)
+		// Two 8-N-1 frames at 1 MHz / 100 MHz expose trailing duplicate output.
+		Simulation.Wait(2000)
+		var remaining: byte
+		assert !this.uartTester.TryReceive(remaining)
+		assert remaining == 0x00
+		assert this.uartTester.IsTransmitIdle()
+		assert this.uartTester.GetFrameErrorCount() == 0
+		assert this.uartTester.GetReceiveOverflowCount() == 0
 	}
-
-    // @Disabled
-	// @Test
-	// fn RunsCompleteInteractiveSession()
-	// {
-	// 	this.WaitForExchange(4)
-	// 	var prompt = "> ".Encode()
-	// 	this.Expect(prompt)
-	// 	var hello = "hello\n".Encode()
-	// 	this.Transmit(hello)
-	// 	this.WaitForExchange(24)
-	// 	var helloExchange = "hello\r\nHello\r\n> ".Encode()
-	// 	this.Expect(helloExchange)
-	// 	var help = "help\n".Encode()
-	// 	this.Transmit(help)
-	// 	this.WaitForExchange(36)
-	// 	var helpExchange = "help\r\nhelp hello bye echo\r\n> ".Encode()
-	// 	this.Expect(helpExchange)
-	// 	var echo = "echo one two\n".Encode()
-	// 	this.Transmit(echo)
-	// 	this.WaitForExchange(36)
-	// 	var echoExchange = "echo one two\r\none two\r\n> ".Encode()
-	// 	this.Expect(echoExchange)
-	// 	var tooMany = "echo 1 2 3 4 5 6 7 8 9\n".Encode()
-	// 	this.Transmit(tooMany)
-	// 	this.WaitForExchange(64)
-	// 	var tooManyExchange = "echo 1 2 3 4 5 6 7 8 9\r\nError: too many arguments\r\n> ".Encode()
-	// 	this.Expect(tooManyExchange)
-	// 	assert this.uartTester.TryTransmit(0x68) == true
-	// 	assert this.uartTester.TryTransmit(0x65) == true
-	// 	assert this.uartTester.TryTransmit(0x6C) == true
-	// 	assert this.uartTester.TryTransmit(0x6C) == true
-	// 	assert this.uartTester.TryTransmit(0x70) == true
-	// 	assert this.uartTester.TryTransmit(0x08) == true
-	// 	assert this.uartTester.TryTransmit(0x6F) == true
-	// 	assert this.uartTester.TryTransmit(0x0A) == true
-	// 	this.WaitForExchange(32)
-	// 	var editedPrefix = "hellp".Encode()
-	// 	this.Expect(editedPrefix)
-	// 	this.ExpectByte(0x08)
-	// 	this.ExpectByte(0x20)
-	// 	this.ExpectByte(0x08)
-	// 	var editedSuffix = "o\r\nHello\r\n> ".Encode()
-	// 	this.Expect(editedSuffix)
-	// 	var unknown = "nope\r\n".Encode()
-	// 	this.Transmit(unknown)
-	// 	this.WaitForExchange(36)
-	// 	var unknownExchange = "nope\r\nUnknown command\r\n> ".Encode()
-	// 	this.Expect(unknownExchange)
-	// 	var remaining: byte
-	// 	assert this.uartTester.TryReceive(remaining) == false
-	// 	assert remaining == 0x00
-	// 	assert this.uartTester.GetFrameErrorCount() == 0
-	// 	assert this.uartTester.GetReceiveOverflowCount() == 0
-	// }
 }

@@ -7,10 +7,10 @@ using Livt.IO
  * Owns the UART, CLI and command policy in the inherited clock context.
  * One process services input, command responses and output without racing retries.
  */
-component UartCliApp
+component UartCliApp<BAUD: Frequency = 115200Hz>
 {
 	// Owned transport and terminal state.
-	uart: BufferedUart
+	uart: BufferedUart<64, 64, UartDataBits.Eight, UartParity.None, UartStopBits.One, BAUD>
 	cli: Cli
 
 	// Owned operations, all borrowing the caller's terminal.
@@ -32,7 +32,7 @@ component UartCliApp
 	 */
 	new(rx: in logic, tx: out logic)
 	{
-		this.uart = new BufferedUart(rx, tx)
+		this.uart = new BufferedUart<64, 64, UartDataBits.Eight, UartParity.None, UartStopBits.One, BAUD>(rx, tx)
 		this.cli = new Cli(echoEnabled = true)
 		this.help = new HelpCommand(this.cli)
 		this.hello = new HelloCommand(this.cli)

@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<testsuite name="Livt" tests="2" failures="0" skipped="0" time="0.0">
+<testsuite name="Livt" tests="3" failures="0" skipped="0" time="0.0">
   <testcase classname="Livt.App.Tests.CliCommandsTest" name="DispatchesCommandsAndRejectsUnknownNames" time="0.0"></testcase>
   <testcase classname="Livt.App.Tests.CliCommandsTest" name="RetriesBlockedResponsesWithoutCompletingOrDuplicating" time="0.0"></testcase>
+  <testcase classname="Livt.App.Tests.UartCliAppTest" name="ExchangesTwoCommandsAtTestBaudRate" time="0.0"></testcase>
 </testsuite>

@@ -14,8 +14,11 @@ All notable changes to this package are documented here.
 - Use named constructor arguments, immutable locals and direct boolean checks
   to make application intent clearer.
 - Add two fast Livt tests covering command responses, prompts, exact matching
-  and retries with a full output queue. Keep the long UART integration scenario
-  commented out and outside the default suite.
+  and retries with a full output queue.
+- Replace the long interactive session with a default-suite UART smoke test that
+  checks two commands, echoes and prompts with bounded receive polling.
+- Expose a compile-time baud parameter, retaining the 115200 Hz default and using
+  1 MHz for the UART smoke test.
 - Update installation examples and document the inherited clock and board setup.
 
 ## 1.0.0 - 2026-08-26

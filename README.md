@@ -141,6 +141,21 @@ keep its frequency metadata consistent with the actual board clock. At 100 MHz,
 the UART uses 868 clock ticks per bit. Connect a logic-level UART adapter that
 matches the board's I/O voltage; do not connect RS-232 voltage levels directly.
 
+The baud rate is a compile-time parameter with a `115200Hz` default. For example,
+these constructor calls use the same application with different UART timings:
+
+```livt
+// Production default: 115200 baud.
+this.app = new UartCliApp(this.rx, this.tx)
+
+// Alternative configuration: 1 Mbaud (also used by the UART smoke test).
+this.fastApp = new UartCliApp<1MHz>(this.fastRx, this.fastTx)
+```
+
+Declare the corresponding fields as `UartCliApp` and `UartCliApp<1MHz>`.
+Configure the connected UART peer to the same baud rate. This parameter changes
+hardware at compilation; it is not a runtime baud-rate switch.
+
 ## Build and test
 
 ```bash
@@ -157,12 +172,19 @@ full. These two application tests have no baud-rate waits and do not instantiate
 UART hardware. Registration order, idle dispatch and caller-defined fallback are
 covered by `CommandDispatcherTest` in the CLI package.
 
-The slower `UartCliAppTest.RunsCompleteInteractiveSession` scenario is retained
-as commented-out source and excluded from the default suite. The fast tests do
-not replace its pin-level serial transport and editing coverage. Release
-validation passed both fast tests and the release build against the registry
-dependencies; the long UART scenario and FPGA synthesis were not rerun for this
-release.
+The default suite also includes
+`UartCliAppTest.ExchangesTwoCommandsAtTestBaudRate`. It instantiates
+`UartCliApp<1MHz>` and a matching UART peer at a 100 MHz clock, checks the initial
+prompt, sends `hello` and `bye`, and verifies both echoes, responses and prompts
+through the serial pins. It checks for trailing output, framing errors and
+receive overflow. Each expected byte is received as soon as available, with a
+bounded polling timeout instead of a long fixed exchange delay.
+
+This smoke test replaces `RunsCompleteInteractiveSession`; comprehensive command
+behavior remains in the byte-level tests, while parser editing and line-ending
+coverage resides in the CLI package tests. The smoke test checks UART integration
+at 1 Mbaud, not physical-board timing at the default 115200 baud. FPGA synthesis
+has not been rerun for this change.
 
 ## Project layout
 
